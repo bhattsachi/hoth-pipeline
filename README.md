@@ -529,4 +529,32 @@ GitHub Repository Structure:
 │   ├── glue-infra/
 │   ├── secrets-manager/
 │   └── step-function-eventbridge/
+
+Cloudformation/
+├── pipeline.yaml                              # Main pipeline CloudFormation template
+│
+└── FHIR/
+    ├── buildspec.yaml                         # CodeBuild build specification
+    ├── hoth_migration_components.yaml         # Master SAM template
+    ├── dev.json                               # Development environment config
+    ├── test.json                              # Test environment config
+    ├── prod.json                              # Production environment config
+    │
+    ├── api-gateway/
+    │   └── fhir_register_member_api.yaml      # API Gateway resources
+    │
+    ├── lambda/
+    │   ├── app.py                             # Main Lambda handler
+    │   └── authorizer.py                      # JWT token authorizer
+    │
+    ├── glue-infra/
+    │   └── template.yaml                      # Glue jobs and resources
+    │
+    ├── secrets-manager/
+    │   └── fhir_migration_secrets.yaml        # Secrets configuration
+    │
+    └── step-function-eventbridge/
+        └── template.yaml                      # Step Functions workflow
+
+
 ```
