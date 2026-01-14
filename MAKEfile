@@ -1,0 +1,6 @@
+setup:
+	pip install pipenv
+	pipenv install --dev
+
+# Craete folder in tree structure (windows)
+#  tree /F /A
