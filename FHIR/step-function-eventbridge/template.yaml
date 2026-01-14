@@ -1,0 +1,433 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  FHIR Migration Step Functions and EventBridge Configuration
+  Orchestrates the data migration workflow with state machine and event rules
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Deployment environment
+
+  ApplicationName:
+    Type: String
+    Description: Project name for resource naming
+
+  GlueJobName:
+    Type: String
+    Description: Name of the Glue job to execute
+
+Resources:
+  #############################################
+  # IAM Role for Step Functions
+  #############################################
+  StepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-stepfunctions-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: StepFunctionsGluePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'glue:StartJobRun'
+                  - 'glue:GetJobRun'
+                  - 'glue:GetJobRuns'
+                  - 'glue:BatchStopJobRun'
+                Resource: '*'
+        - PolicyName: StepFunctionsLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource:
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ApplicationName}-*'
+        - PolicyName: StepFunctionsSNSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource:
+                  - !Ref NotificationTopic
+        - PolicyName: StepFunctionsLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:GetLogDelivery'
+                  - 'logs:UpdateLogDelivery'
+                  - 'logs:DeleteLogDelivery'
+                  - 'logs:ListLogDeliveries'
+                  - 'logs:PutLogEvents'
+                  - 'logs:PutResourcePolicy'
+                  - 'logs:DescribeResourcePolicies'
+                  - 'logs:DescribeLogGroups'
+                Resource: '*'
+        - PolicyName: StepFunctionsXRayPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'xray:PutTraceSegments'
+                  - 'xray:PutTelemetryRecords'
+                  - 'xray:GetSamplingRules'
+                  - 'xray:GetSamplingTargets'
+                Resource: '*'
+
+  #############################################
+  # SNS Topic for Notifications
+  #############################################
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ApplicationName}-notifications-${Environment}'
+      DisplayName: FHIR Migration Notifications
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  #############################################
+  # CloudWatch Log Group for Step Functions
+  #############################################
+  StepFunctionsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/${ApplicationName}-${Environment}'
+      RetentionInDays: 30
+
+  #############################################
+  # Step Functions State Machine
+  #############################################
+  FhirMigrationStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${ApplicationName}-migration-workflow-${Environment}'
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt StepFunctionsRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StepFunctionsLogGroup.Arn
+      TracingConfiguration:
+        Enabled: true
+      DefinitionString: !Sub |
+        {
+          "Comment": "FHIR Migration Workflow - Orchestrates data migration process",
+          "StartAt": "ValidateInput",
+          "States": {
+            "ValidateInput": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.memberId",
+                  "IsPresent": true,
+                  "Next": "InitializeMigration"
+                }
+              ],
+              "Default": "ValidationFailed"
+            },
+            "ValidationFailed": {
+              "Type": "Fail",
+              "Error": "ValidationError",
+              "Cause": "Missing required input parameters"
+            },
+            "InitializeMigration": {
+              "Type": "Pass",
+              "Parameters": {
+                "memberId.$": "$.memberId",
+                "firstName.$": "$.firstName",
+                "lastName.$": "$.lastName",
+                "dateOfBirth.$": "$.dateOfBirth",
+                "email.$": "$.email",
+                "metadata.$": "$.metadata",
+                "timestamp.$": "$.timestamp",
+                "environment.$": "$.environment",
+                "status": "INITIALIZED",
+                "executionId.$": "$$.Execution.Id"
+              },
+              "Next": "StartDataExtraction"
+            },
+            "StartDataExtraction": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun.sync",
+              "Parameters": {
+                "JobName": "${GlueJobName}",
+                "Arguments": {
+                  "--member_id.$": "$.memberId",
+                  "--execution_id.$": "$.executionId",
+                  "--environment": "${Environment}"
+                }
+              },
+              "ResultPath": "$.glueResult",
+              "Next": "CheckExtractionStatus",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "ResultPath": "$.error",
+                  "Next": "HandleExtractionError"
+                }
+              ],
+              "TimeoutSeconds": 7200
+            },
+            "HandleExtractionError": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${NotificationTopic}",
+                "Subject": "FHIR Migration Error - Data Extraction Failed",
+                "Message.$": "States.Format('Data extraction failed for member {}. Error: {}', $.memberId, $.error.Cause)"
+              },
+              "Next": "MigrationFailed"
+            },
+            "CheckExtractionStatus": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.glueResult.JobRunState",
+                  "StringEquals": "SUCCEEDED",
+                  "Next": "TransformData"
+                }
+              ],
+              "Default": "HandleExtractionError"
+            },
+            "TransformData": {
+              "Type": "Pass",
+              "Parameters": {
+                "memberId.$": "$.memberId",
+                "firstName.$": "$.firstName",
+                "lastName.$": "$.lastName",
+                "dateOfBirth.$": "$.dateOfBirth",
+                "email.$": "$.email",
+                "metadata.$": "$.metadata",
+                "timestamp.$": "$.timestamp",
+                "environment.$": "$.environment",
+                "executionId.$": "$.executionId",
+                "extractionJobRunId.$": "$.glueResult.JobRunId",
+                "status": "TRANSFORMING"
+              },
+              "Next": "ValidateTransformedData"
+            },
+            "ValidateTransformedData": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.memberId",
+                  "IsPresent": true,
+                  "Next": "LoadData"
+                }
+              ],
+              "Default": "HandleValidationError"
+            },
+            "HandleValidationError": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${NotificationTopic}",
+                "Subject": "FHIR Migration Error - Validation Failed",
+                "Message.$": "States.Format('Data validation failed for member {}', $.memberId)"
+              },
+              "Next": "MigrationFailed"
+            },
+            "LoadData": {
+              "Type": "Pass",
+              "Parameters": {
+                "memberId.$": "$.memberId",
+                "firstName.$": "$.firstName",
+                "lastName.$": "$.lastName",
+                "dateOfBirth.$": "$.dateOfBirth",
+                "email.$": "$.email",
+                "metadata.$": "$.metadata",
+                "timestamp.$": "$.timestamp",
+                "environment.$": "$.environment",
+                "executionId.$": "$.executionId",
+                "status": "LOADED"
+              },
+              "Next": "NotifySuccess"
+            },
+            "NotifySuccess": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${NotificationTopic}",
+                "Subject": "FHIR Migration Completed Successfully",
+                "Message.$": "States.Format('Migration completed successfully for member {}. Execution ID: {}', $.memberId, $.executionId)"
+              },
+              "Next": "MigrationComplete"
+            },
+            "MigrationComplete": {
+              "Type": "Succeed"
+            },
+            "MigrationFailed": {
+              "Type": "Fail",
+              "Error": "MigrationError",
+              "Cause": "Migration process failed"
+            }
+          }
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  #############################################
+  # EventBridge Rules
+  #############################################
+  
+  # Rule to trigger workflow on schedule (daily)
+  ScheduledMigrationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ApplicationName}-scheduled-migration-${Environment}'
+      Description: Scheduled trigger for batch migration processing
+      ScheduleExpression: 'cron(0 2 * * ? *)'
+      State: DISABLED
+      Targets:
+        - Id: StepFunctionsTarget
+          Arn: !GetAtt FhirMigrationStateMachine.Arn
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          Input: !Sub |
+            {
+              "memberId": "batch-${Environment}",
+              "firstName": "Batch",
+              "lastName": "Process",
+              "environment": "${Environment}",
+              "timestamp": "scheduled"
+            }
+
+  # Rule to capture Glue job state changes
+  GlueJobStateChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ApplicationName}-glue-state-change-${Environment}'
+      Description: Capture Glue job state changes
+      EventPattern:
+        source:
+          - aws.glue
+        detail-type:
+          - Glue Job State Change
+        detail:
+          jobName:
+            - prefix: !Sub '${ApplicationName}'
+          state:
+            - FAILED
+            - TIMEOUT
+            - STOPPED
+      State: ENABLED
+      Targets:
+        - Id: SNSNotification
+          Arn: !Ref NotificationTopic
+
+  # Rule to capture Step Functions execution failures
+  StepFunctionsFailureRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ApplicationName}-stepfunctions-failure-${Environment}'
+      Description: Capture Step Functions execution failures
+      EventPattern:
+        source:
+          - aws.states
+        detail-type:
+          - Step Functions Execution Status Change
+        detail:
+          stateMachineArn:
+            - !GetAtt FhirMigrationStateMachine.Arn
+          status:
+            - FAILED
+            - TIMED_OUT
+            - ABORTED
+      State: ENABLED
+      Targets:
+        - Id: SNSNotification
+          Arn: !Ref NotificationTopic
+
+  #############################################
+  # IAM Role for EventBridge
+  #############################################
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-eventbridge-sfn-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: EventBridgeStepFunctionsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                Resource:
+                  - !GetAtt FhirMigrationStateMachine.Arn
+
+  # SNS Topic Policy for EventBridge
+  NotificationTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref NotificationTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventsPublish
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sns:Publish'
+            Resource: !Ref NotificationTopic
+
+Outputs:
+  StateMachineArn:
+    Description: ARN of the Step Functions state machine
+    Value: !GetAtt FhirMigrationStateMachine.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-StateMachineArn-${Environment}'
+
+  StateMachineName:
+    Description: Name of the Step Functions state machine
+    Value: !GetAtt FhirMigrationStateMachine.Name
+    Export:
+      Name: !Sub '${ApplicationName}-StateMachineName-${Environment}'
+
+  NotificationTopicArn:
+    Description: ARN of the SNS notification topic
+    Value: !Ref NotificationTopic
+    Export:
+      Name: !Sub '${ApplicationName}-NotificationTopicArn-${Environment}'
+
+  StepFunctionsRoleArn:
+    Description: IAM role ARN for Step Functions
+    Value: !GetAtt StepFunctionsRole.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-StepFunctionsRoleArn-${Environment}'
+
+  EventBridgeRoleArn:
+    Description: IAM role ARN for EventBridge
+    Value: !GetAtt EventBridgeRole.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-EventBridgeRoleArn-${Environment}'

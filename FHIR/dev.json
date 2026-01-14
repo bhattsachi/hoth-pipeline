@@ -1,0 +1,14 @@
+{
+  "Parameters": {
+    "Environment": "dev",
+    "ApplicationName": "hoth-migration",
+    "OktaDomain": "dev-your-okta-domain.okta.com",
+    "LogLevel": "DEBUG"
+  },
+  "Tags": {
+    "Environment": "dev",
+    "Project": "hoth-migration",
+    "CostCenter": "development",
+    "ManagedBy": "CloudFormation"
+  }
+}

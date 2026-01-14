@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  HOTH Migration Components - Master SAM Template
+  Orchestrates deployment of all serverless components including
+  Lambda, API Gateway, Secrets Manager, Step Functions, and Glue Jobs
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+    Description: Deployment environment
+
+  ApplicationName:
+    Type: String
+    Default: hoth-data-application
+    Description: Name of the application
+
+  OktaDomain:
+    Type: String
+    Description: Okta domain for token verification
+    Default: your-okta-domain.okta.com
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+    Description: Log level for Lambda functions
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
+
+Resources:
+  #############################################
+  # Secrets Manager Stack
+  #############################################
+  SecretsManagerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./secrets-manager/fhir_migration_secrets.yaml
+      Parameters:
+        Environment: !Ref Environment
+        ApplicationName: !Ref ApplicationName
+        OktaDomain: !Ref OktaDomain
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  #############################################
+  # Lambda Functions Stack (defined inline for SAM)
+  #############################################
+  
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !GetAtt SecretsManagerStack.Outputs.FhirMigrationSecretArn
+        - PolicyName: StepFunctionsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                  - 'states:DescribeExecution'
+                Resource: !GetAtt StepFunctionStack.Outputs.StateMachineArn
+
+  # Authorizer Lambda Role
+  AuthorizerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-authorizer-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !GetAtt SecretsManagerStack.Outputs.OktaConfigSecretArn
+
+  # Main Application Lambda Function
+  FhirMigrationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ApplicationName}-handler-${Environment}'
+      Description: Main handler for FHIR migration processing
+      CodeUri: ./lambda/
+      Handler: app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SECRET_ARN: !GetAtt SecretsManagerStack.Outputs.FhirMigrationSecretArn
+          STATE_MACHINE_ARN: !GetAtt StepFunctionStack.Outputs.StateMachineArn
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  # Authorizer Lambda Function
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ApplicationName}-authorizer-${Environment}'
+      Description: Token validation authorizer for API Gateway
+      CodeUri: ./lambda/
+      Handler: authorizer.lambda_handler
+      Role: !GetAtt AuthorizerLambdaRole.Arn
+      Environment:
+        Variables:
+          OKTA_SECRET_ARN: !GetAtt SecretsManagerStack.Outputs.OktaConfigSecretArn
+          OKTA_DOMAIN: !Ref OktaDomain
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  #############################################
+  # API Gateway Stack
+  #############################################
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - FhirMigrationFunction
+      - AuthorizerFunction
+    Properties:
+      TemplateURL: ./api-gateway/fhir_register_member_api.yaml
+      Parameters:
+        Environment: !Ref Environment
+        ApplicationName: !Ref ApplicationName
+        LambdaFunctionArn: !GetAtt FhirMigrationFunction.Arn
+        AuthorizerFunctionArn: !GetAtt AuthorizerFunction.Arn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  # Lambda Permission for API Gateway
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FhirMigrationFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+        - ApiId: !GetAtt ApiGatewayStack.Outputs.ApiGatewayId
+
+  # Lambda Permission for Authorizer
+  AuthorizerApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthorizerFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 
+        - 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/authorizers/*'
+        - ApiId: !GetAtt ApiGatewayStack.Outputs.ApiGatewayId
+
+  #############################################
+  # Step Functions Stack
+  #############################################
+  StepFunctionStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./step-function-eventbridge/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        ApplicationName: !Ref ApplicationName
+        GlueJobName: !GetAtt GlueStack.Outputs.GlueJobName
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  #############################################
+  # Glue Jobs Stack
+  #############################################
+  GlueStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./glue-infra/template.yaml
+      Parameters:
+        Environment: !Ref Environment
+        ApplicationName: !Ref ApplicationName
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !GetAtt ApiGatewayStack.Outputs.ApiEndpoint
+    Export:
+      Name: !Sub '${ApplicationName}-ApiEndpoint-${Environment}'
+
+  LambdaFunctionArn:
+    Description: Main Lambda function ARN
+    Value: !GetAtt FhirMigrationFunction.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-LambdaArn-${Environment}'
+
+  AuthorizerFunctionArn:
+    Description: Authorizer Lambda function ARN
+    Value: !GetAtt AuthorizerFunction.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-AuthorizerArn-${Environment}'
+
+  StateMachineArn:
+    Description: Step Function state machine ARN
+    Value: !GetAtt StepFunctionStack.Outputs.StateMachineArn
+    Export:
+      Name: !Sub '${ApplicationName}-StateMachineArn-${Environment}'
+
+  GlueJobName:
+    Description: Glue job name
+    Value: !GetAtt GlueStack.Outputs.GlueJobName
+    Export:
+      Name: !Sub '${ApplicationName}-GlueJobName-${Environment}'
+
+  SecretArn:
+    Description: Secrets Manager secret ARN
+    Value: !GetAtt SecretsManagerStack.Outputs.FhirMigrationSecretArn
+    Export:
+      Name: !Sub '${ApplicationName}-SecretArn-${Environment}'

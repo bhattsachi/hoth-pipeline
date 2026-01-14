@@ -1,0 +1,335 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  FHIR Migration Glue Jobs Infrastructure
+  ETL jobs for data migration and transformation
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Deployment environment
+
+  ApplicationName:
+    Type: String
+    Description: Project name for resource naming
+
+Resources:
+  #############################################
+  # S3 Bucket for Glue Scripts and Data
+  #############################################
+  GlueScriptsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ApplicationName}-glue-scripts-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  GlueDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ApplicationName}-glue-data-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIntelligentTiering
+            Status: Enabled
+            Transitions:
+              - StorageClass: INTELLIGENT_TIERING
+                TransitionInDays: 30
+          - Id: ExpireTempFiles
+            Status: Enabled
+            Prefix: temp/
+            ExpirationInDays: 7
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ApplicationName
+
+  #############################################
+  # IAM Role for Glue Jobs
+  #############################################
+  GlueJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ApplicationName}-glue-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GlueS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !GetAtt GlueScriptsBucket.Arn
+                  - !Sub '${GlueScriptsBucket.Arn}/*'
+                  - !GetAtt GlueDataBucket.Arn
+                  - !Sub '${GlueDataBucket.Arn}/*'
+        - PolicyName: GlueSecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ApplicationName}/glue-config/${Environment}*'
+        - PolicyName: GlueCloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/*'
+
+  #############################################
+  # Glue Database
+  #############################################
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub '${ApplicationName}_database_${Environment}'
+        Description: FHIR migration data catalog database
+
+  #############################################
+  # Glue Jobs
+  #############################################
+  
+  # Main FHIR Data Migration Job
+  FhirMigrationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ApplicationName}-fhir-migration-${Environment}'
+      Description: Main FHIR data migration ETL job
+      Role: !GetAtt GlueJobRole.Arn
+      GlueVersion: '4.0'
+      WorkerType: G.1X
+      NumberOfWorkers: 2
+      Timeout: 120
+      MaxRetries: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucket}/scripts/fhir_migration.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueDataBucket}/spark-logs/'
+        '--TempDir': !Sub 's3://${GlueDataBucket}/temp/'
+        '--environment': !Ref Environment
+        '--source_bucket': !Ref GlueDataBucket
+        '--target_bucket': !Ref GlueDataBucket
+        '--secret_name': !Sub '${ApplicationName}/glue-config/${Environment}'
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  # Data Validation Job
+  DataValidationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ApplicationName}-data-validation-${Environment}'
+      Description: Data quality validation job
+      Role: !GetAtt GlueJobRole.Arn
+      GlueVersion: '4.0'
+      WorkerType: G.1X
+      NumberOfWorkers: 2
+      Timeout: 60
+      MaxRetries: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucket}/scripts/data_validation.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueDataBucket}/temp/'
+        '--environment': !Ref Environment
+        '--data_bucket': !Ref GlueDataBucket
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  # Data Transformation Job
+  DataTransformationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ApplicationName}-data-transformation-${Environment}'
+      Description: FHIR data transformation job
+      Role: !GetAtt GlueJobRole.Arn
+      GlueVersion: '4.0'
+      WorkerType: G.1X
+      NumberOfWorkers: 2
+      Timeout: 90
+      MaxRetries: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucket}/scripts/data_transformation.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueDataBucket}/temp/'
+        '--environment': !Ref Environment
+        '--input_path': !Sub 's3://${GlueDataBucket}/input/'
+        '--output_path': !Sub 's3://${GlueDataBucket}/output/'
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  #############################################
+  # Glue Crawler
+  #############################################
+  FhirDataCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ApplicationName}-fhir-crawler-${Environment}'
+      Description: Crawler for FHIR migration data
+      Role: !GetAtt GlueJobRole.Arn
+      DatabaseName: !Ref GlueDatabase
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GlueDataBucket}/output/'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+      Schedule:
+        ScheduleExpression: 'cron(0 */6 * * ? *)'
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  #############################################
+  # Glue Triggers
+  #############################################
+  MigrationJobTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ApplicationName}-migration-trigger-${Environment}'
+      Description: Trigger for FHIR migration job
+      Type: ON_DEMAND
+      Actions:
+        - JobName: !Ref FhirMigrationJob
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  ValidationAfterMigrationTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ApplicationName}-validation-trigger-${Environment}'
+      Description: Run validation after migration completes
+      Type: CONDITIONAL
+      StartOnCreation: true
+      Actions:
+        - JobName: !Ref DataValidationJob
+      Predicate:
+        Conditions:
+          - JobName: !Ref FhirMigrationJob
+            State: SUCCEEDED
+            LogicalOperator: EQUALS
+      Tags:
+        Environment: !Ref Environment
+        Project: !Ref ApplicationName
+
+  #############################################
+  # CloudWatch Log Group
+  #############################################
+  GlueLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ApplicationName}-${Environment}'
+      RetentionInDays: 30
+
+Outputs:
+  GlueJobName:
+    Description: Name of the main Glue migration job
+    Value: !Ref FhirMigrationJob
+    Export:
+      Name: !Sub '${ApplicationName}-GlueJobName-${Environment}'
+
+  ValidationJobName:
+    Description: Name of the data validation job
+    Value: !Ref DataValidationJob
+    Export:
+      Name: !Sub '${ApplicationName}-ValidationJobName-${Environment}'
+
+  TransformationJobName:
+    Description: Name of the data transformation job
+    Value: !Ref DataTransformationJob
+    Export:
+      Name: !Sub '${ApplicationName}-TransformationJobName-${Environment}'
+
+  GlueScriptsBucketName:
+    Description: S3 bucket for Glue scripts
+    Value: !Ref GlueScriptsBucket
+    Export:
+      Name: !Sub '${ApplicationName}-GlueScriptsBucket-${Environment}'
+
+  GlueDataBucketName:
+    Description: S3 bucket for Glue data
+    Value: !Ref GlueDataBucket
+    Export:
+      Name: !Sub '${ApplicationName}-GlueDataBucket-${Environment}'
+
+  GlueDatabaseName:
+    Description: Glue Data Catalog database name
+    Value: !Ref GlueDatabase
+    Export:
+      Name: !Sub '${ApplicationName}-GlueDatabase-${Environment}'
+
+  GlueRoleArn:
+    Description: IAM role ARN for Glue jobs
+    Value: !GetAtt GlueJobRole.Arn
+    Export:
+      Name: !Sub '${ApplicationName}-GlueRoleArn-${Environment}'

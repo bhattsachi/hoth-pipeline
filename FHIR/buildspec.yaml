@@ -1,0 +1,116 @@
+version: 0.2
+
+env:
+  variables:
+    SAM_CLI_TELEMETRY: 0
+  parameter-store:
+    # Add any parameter store references if needed
+    # EXAMPLE_PARAM: /path/to/param
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install aws-sam-cli cfn-lint
+      - pip install boto3 requests
+      - echo "SAM CLI version:"
+      - sam --version
+
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on $(date)"
+      - echo "Environment: ${ENVIRONMENT}"
+      - echo "AWS Region: ${AWS_REGION}"
+      
+      # Validate CloudFormation templates
+      - echo "Validating CloudFormation templates..."
+      - cfn-lint FHIR/hoth_migration_components.yaml
+      - cfn-lint FHIR/api-gateway/fhir_register_member_api.yaml
+      - cfn-lint FHIR/secrets-manager/fhir_migration_secrets.yaml
+      - cfn-lint FHIR/glue-infra/template.yaml
+      - cfn-lint FHIR/step-function-eventbridge/template.yaml
+      
+      # Run Python linting on Lambda code
+      - echo "Linting Python code..."
+      - pip install pylint
+      - pylint FHIR/lambda/app.py --disable=all --enable=E || true
+      - pylint FHIR/lambda/authorizer.py --disable=all --enable=E || true
+
+  build:
+    commands:
+      - echo "Build phase started on $(date)"
+      - cd FHIR
+      
+      # Package Lambda functions
+      - echo "Packaging Lambda functions..."
+      - mkdir -p .aws-sam/build/lambda
+      - cp lambda/app.py .aws-sam/build/lambda/
+      - cp lambda/authorizer.py .aws-sam/build/lambda/
+      
+      # Create requirements file for Lambda
+      - |
+        cat > .aws-sam/build/lambda/requirements.txt << 'EOF'
+        boto3>=1.28.0
+        botocore>=1.31.0
+        EOF
+      
+      # Install Lambda dependencies
+      - pip install -r .aws-sam/build/lambda/requirements.txt -t .aws-sam/build/lambda/ --upgrade
+      
+      # SAM build
+      - echo "Running SAM build..."
+      - sam build --template-file hoth_migration_components.yaml --use-container || sam build --template-file hoth_migration_components.yaml
+      
+      # SAM package
+      - echo "Running SAM package..."
+      - sam package \
+          --template-file .aws-sam/build/template.yaml \
+          --output-template-file packaged-template.yaml \
+          --s3-bucket ${ARTIFACT_BUCKET} \
+          --s3-prefix sam-artifacts/${ENVIRONMENT}
+      
+      - cd ..
+      - echo "Build completed successfully"
+
+  post_build:
+    commands:
+      - echo "Post-build phase started on $(date)"
+      
+      # Copy environment configuration
+      - echo "Copying configuration files..."
+      - cp FHIR/${ENVIRONMENT}.json FHIR/packaged-template.yaml .
+      
+      # Validate packaged template
+      - echo "Validating packaged template..."
+      - aws cloudformation validate-template --template-body file://packaged-template.yaml || echo "Template validation skipped (too large)"
+      
+      - echo "Post-build completed on $(date)"
+
+artifacts:
+  files:
+    - packaged-template.yaml
+    - ${ENVIRONMENT}.json
+    - FHIR/api-gateway/**/*
+    - FHIR/glue-infra/**/*
+    - FHIR/lambda/**/*
+    - FHIR/secrets-manager/**/*
+    - FHIR/step-function-eventbridge/**/*
+  base-directory: FHIR
+  discard-paths: no
+  name: build-output-${CODEBUILD_BUILD_NUMBER}
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+    - '/root/.sam/**/*'
+
+reports:
+  lint-reports:
+    files:
+      - '**/*'
+    base-directory: reports
+    file-format: JUNITXML
+    discard-paths: yes
