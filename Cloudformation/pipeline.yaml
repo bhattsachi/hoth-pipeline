@@ -39,7 +39,7 @@ Parameters:
   ConnectionID:
     Type: String
     Description: ID of the CodeConnection
-    Default: 1f6ccd5f-ab59-4669-8829-216b19d3d570
+    Default: 8cba8eca-2899-4fa8-bdfe-e96f947da906
 
 Resources:
   #############################################

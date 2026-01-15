@@ -315,6 +315,7 @@ aws iam get-role-policy \
 # RETRY PIPELINE
 # ════════════════════════════════════════════════════════════════════════════
 export PIPELINE_NAME="hoth-data-application-pipeline"
+
 echo "Restarting pipeline..."
 aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
 
@@ -605,3 +606,12 @@ Cloudformation/
         └── template.yaml                      # Step Functions workflow
 ```
 # =====================================================
+
+# Troubleshoot permission issue
+# check attached policies
+   aws iam list-attached-role-policies --role-name ${ROLE_NAME}
+
+#Issue - Github pipeline (hot-pipeline) is not confgiured with AWS acees in github
+#Fix - got to Github.com/bhattsachi/installation
+    and configure the repo for the aws codebuild
+    ![alt text](image.png)
