@@ -245,7 +245,7 @@ aws cloudformation wait stack-create-complete \
 ```bash
 # Get the Pipeline URL
 PIPELINE_URL=$(aws cloudformation describe-stacks \
-    --stack-name ${PROJECT_NAME}-pipeline \
+    --stack-name ${APPLICATION_NAME}-pipeline \
     --query "Stacks[0].Outputs[?OutputKey=='PipelineUrl'].OutputValue" \
     --output text \
     --region ${AWS_REGION})
@@ -254,7 +254,7 @@ echo "Pipeline URL: ${PIPELINE_URL}"
 
 # Get the artifact bucket name
 ARTIFACT_BUCKET=$(aws cloudformation describe-stacks \
-    --stack-name ${PROJECT_NAME}-pipeline \
+    --stack-name ${APPLICATION_NAME}-pipeline \
     --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" \
     --output text \
     --region ${AWS_REGION})
@@ -263,7 +263,7 @@ echo "Artifact Bucket: ${ARTIFACT_BUCKET}"
 
 # Get the pipeline name
 PIPELINE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name ${PROJECT_NAME}-pipeline \
+    --stack-name ${APPLICATION_NAME}-pipeline \
     --query "Stacks[0].Outputs[?OutputKey=='PipelineName'].OutputValue" \
     --output text \
     --region ${AWS_REGION})
@@ -555,6 +555,5 @@ Cloudformation/
     │
     └── step-function-eventbridge/
         └── template.yaml                      # Step Functions workflow
-
-
 ```
+# =====================================================
