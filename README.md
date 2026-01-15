@@ -270,6 +270,55 @@ PIPELINE_NAME=$(aws cloudformation describe-stacks \
 
 echo "Pipeline Name: ${PIPELINE_NAME}"
 ```
+export PIPELINE_NAME="hoth-data-application-pipeline"
+export CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570"
+
+# ════════════════════════════════════════════════════════════════════════════
+# GET ROLE NAME
+# ════════════════════════════════════════════════════════════════════════════
+echo "Getting pipeline role..."
+ROLE_ARN=$(aws codepipeline get-pipeline \
+  --name $PIPELINE_NAME \
+  --query "pipeline.roleArn" \
+  --output text)
+ROLE_NAME=$(echo $ROLE_ARN | cut -d'/' -f2)
+echo "Role: $ROLE_NAME"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADD POLICY
+# ════════════════════════════════════════════════════════════════════════════
+echo "Adding CodeConnections permission..."
+aws iam put-role-policy \
+  --role-name $ROLE_NAME \
+  --policy-name CodeConnectionsAccess \
+  --policy-document "{
+    \"Version\": \"2012-10-17\",
+    \"Statement\": [
+      {
+        \"Effect\": \"Allow\",
+        \"Action\": [
+          \"codeconnections:UseConnection\",
+          \"codeconnections:GetConnection\"
+        ],
+        \"Resource\": \"$CONNECTION_ARN\"
+      }
+    ]
+  }"
+
+echo "✓ Permission added!"
+# ----------------
+# Check existing policy
+# -----------------------
+aws iam get-role-policy \
+ --role-name "$ROLE_NAME" \
+ --policy-name "CodeConnectionsAccess"
+
+# ════════════════════════════════════════════════════════════════════════════
+# RETRY PIPELINE
+# ════════════════════════════════════════════════════════════════════════════
+echo "Restarting pipeline..."
+aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
+
 
 ### Step 5: Push Code to GitHub
 
