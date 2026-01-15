@@ -174,7 +174,7 @@ export ENVIRONMENT="dev"
 export APPLICATION_NAME="hoth-data-application"
 export GITHUB_OWNER="bhattsachi"
 export GITHUB_REPO="hoth-pipeline"
-export GITHUB_BRANCH="main"
+export GITHUB_BRANCH="dev"
 export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570"
 
 # Make the deployment script executable
@@ -190,19 +190,17 @@ chmod +x deploy.sh
 
 ### Step 1: Set Environment Variables
 
+# Set required environment variables
+export AWS_REGION="us-east-2"
+export ENVIRONMENT="dev"
+export APPLICATION_NAME="hoth-data-application"
+export GITHUB_OWNER="bhattsachi"
+export GITHUB_REPO="hoth-pipeline"
+export GITHUB_BRANCH="dev"
+export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570"
+
 ```bash
 # Configure deployment variables
-export AWS_REGION="us-east-1"
-export ENVIRONMENT="dev"
-export PROJECT_NAME="hoth-migration"
-
-# GitHub Configuration
-export GITHUB_OWNER="your-github-username-or-org"
-export GITHUB_REPO="hoth-migration"
-export GITHUB_BRANCH="main"
-
-# CodeStar Connection ARN (from Step 0)
-export CODESTAR_CONNECTION_ARN="arn:aws:codestar-connections:us-east-1:123456789012:connection/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
 ### Step 2: Validate CloudFormation Templates
@@ -300,7 +298,7 @@ aws iam put-role-policy \
           \"codeconnections:UseConnection\",
           \"codeconnections:GetConnection\"
         ],
-        \"Resource\": \"$CONNECTION_ARN\"
+        \"Resource\": \"*\"
       }
     ]
   }"
@@ -316,6 +314,7 @@ aws iam get-role-policy \
 # ════════════════════════════════════════════════════════════════════════════
 # RETRY PIPELINE
 # ════════════════════════════════════════════════════════════════════════════
+export PIPELINE_NAME="hoth-data-application-pipeline"
 echo "Restarting pipeline..."
 aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
 

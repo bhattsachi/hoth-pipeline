@@ -35,14 +35,6 @@ Parameters:
     Type: String
     Default: dev
     Description: GitHub branch to deploy from
-
-  CodeStarConnectionArn:
-    Type: String
-    Description: |
-      ARN of the CodeStar Connection to GitHub.
-      Create this in AWS Console: Developer Tools > Settings > Connections
-      Example: arn:aws:codestar-connections:us-east-1:123456789012:connection/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    Default: arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570
   
   ConnectionID:
     Type: String
@@ -401,6 +393,3 @@ Outputs:
     Description: GitHub repository being monitored
     Value: !Sub 'https://github.com/${GitHubOwner}/${GitHubRepo}'
 
-  CodeStarConnectionArn:
-    Description: CodeStar Connection ARN used for GitHub
-    Value: !Ref CodeStarConnectionArn
