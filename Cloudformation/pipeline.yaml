@@ -33,7 +33,7 @@ Parameters:
 
   GitHubBranch:
     Type: String
-    Default: main
+    Default: dev
     Description: GitHub branch to deploy from
 
   CodeStarConnectionArn:
