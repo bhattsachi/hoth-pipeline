@@ -75,24 +75,7 @@ Resources:
             ExpirationInDays: 30
     DeletionPolicy: Retain
 
-  ArtifactBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref ArtifactBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: DenyInsecureConnections
-            Effect: Deny
-            Principal: '*'
-            Action: 's3:*'
-            Resource:
-              - !GetAtt ArtifactBucket.Arn
-              - !Sub '${ArtifactBucket.Arn}/*'
-            Condition:
-              Bool:
-                'aws:SecureTransport': 'false'
-
+ 
   #############################################
   # IAM Role for CodePipeline
   #############################################
@@ -334,7 +317,7 @@ Resources:
                 Provider: CodeStarSourceConnection
                 Version: '1'
               Configuration:
-                ConnectionArn: !Ref CodeStarConnectionArn
+                ConnectionArn: !Sub "arn:aws:codeconnections:${AWS::Region}:${AWS::AccountId}:connection/${ConnectionID}"
                 FullRepositoryId: !Sub '${GitHubOwner}/${GitHubRepo}'
                 BranchName: !Ref GitHubBranch
                 OutputArtifactFormat: CODE_ZIP
@@ -355,7 +338,7 @@ Resources:
                 Provider: CodeBuild
                 Version: '1'
               Configuration:
-                ApplicationName: !Ref CodeBuildProject
+                ProjectName: !Ref CodeBuildProject
               InputArtifacts:
                 - Name: SourceOutput
               OutputArtifacts:

@@ -219,10 +219,10 @@ aws cloudformation validate-template \
 ```bash
 # Deploy the CodePipeline stack with GitHub source
 aws cloudformation deploy \
-    --template-file pipeline.yaml \
-    --stack-name ${PROJECT_NAME}-pipeline \
+    --template-file cloudformation/pipeline.yaml \
+    --stack-name ${APPLICATION_NAME}-pipeline \
     --parameter-overrides \
-        ApplicationName=${PROJECT_NAME} \
+        ApplicationName=${APPLICATION_NAME} \
         Environment=${ENVIRONMENT} \
         GitHubOwner=${GITHUB_OWNER} \
         GitHubRepo=${GITHUB_REPO} \
@@ -231,7 +231,7 @@ aws cloudformation deploy \
     --capabilities CAPABILITY_NAMED_IAM \
     --region ${AWS_REGION} \
     --tags \
-        Project=${PROJECT_NAME} \
+        Project=${APPLICATION_NAME} \
         Environment=${ENVIRONMENT}
 
 # Wait for stack creation to complete

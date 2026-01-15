@@ -78,7 +78,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service: lambda.amazonaws.com
-            Action: 'sts:AssumeRole'
+            Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
@@ -88,7 +88,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - 'secretsmanager:GetSecretValue'
+                  - secretsmanager:GetSecretValue
                 Resource: !GetAtt SecretsManagerStack.Outputs.FhirMigrationSecretArn
         - PolicyName: StepFunctionsAccess
           PolicyDocument:
@@ -96,8 +96,8 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - 'states:StartExecution'
-                  - 'states:DescribeExecution'
+                  - states:StartExecution
+                  - states:DescribeExecution
                 Resource: !GetAtt StepFunctionStack.Outputs.StateMachineArn
 
   # Authorizer Lambda Role
