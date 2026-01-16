@@ -3,9 +3,6 @@ version: 0.2
 env:
   variables:
     SAM_CLI_TELEMETRY: 0
-  parameter-store:
-    # Add any parameter store references if needed
-    # EXAMPLE_PARAM: /path/to/param
 
 phases:
   install:

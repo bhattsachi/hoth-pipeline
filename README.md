@@ -191,13 +191,13 @@ chmod +x deploy.sh
 ### Step 1: Set Environment Variables
 
 # Set required environment variables
-export AWS_REGION="us-east-1"
+export AWS_REGION="us-east-2"
 export ENVIRONMENT="dev"
 export APPLICATION_NAME="hoth-data-application"
 export GITHUB_OWNER="bhattsachi"
 export GITHUB_REPO="hoth-pipeline"
 export GITHUB_BRANCH="dev"
-export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-1:615299756109:connection/2dc76287-0712-4a02-b7e9-61f601b8ad63"
+export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/247abf24-ff00-4488-8fe6-01713d145aaa"
 
 ```bash
 # Configure deployment variables
