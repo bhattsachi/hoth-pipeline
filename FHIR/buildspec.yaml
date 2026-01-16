@@ -19,9 +19,7 @@ phases:
   pre_build:
     commands:
       - echo "Pre-build phase started on $(date)"
-      - echo "Environment: ${ENVIRONMENT}"
-      - echo "AWS Region: ${AWS_REGION}"
-      
+            
       # Validate CloudFormation templates
       - echo "Validating CloudFormation templates..."
       - cfn-lint FHIR/hoth_migration_components.yaml
