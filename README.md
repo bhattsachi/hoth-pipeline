@@ -315,6 +315,7 @@ aws iam get-role-policy \
 # RETRY PIPELINE
 # ════════════════════════════════════════════════════════════════════════════
 export PIPELINE_NAME="hoth-data-application-pipeline"
+export AWS_REGION="us-east-2"
 
 echo "Restarting pipeline..."
 aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
@@ -469,6 +470,8 @@ aws logs tail /aws/stepfunctions/${PROJECT_NAME}-${ENVIRONMENT} --follow
 ```
 
 ### Manually Trigger Pipeline
+export PIPELINE_NAME="hoth-data-application-pipeline"
+export AWS_REGION="us-east-2"
 
 ```bash
 aws codepipeline start-pipeline-execution \

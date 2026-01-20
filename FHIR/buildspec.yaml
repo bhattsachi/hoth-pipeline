@@ -13,42 +13,40 @@ phases:
       - echo "=== Installing Dependencies ==="
       - pip install --upgrade pip
       - pip install aws-sam-cli
-      - sam --version
 
   pre_build:
     commands:
       - echo "=== Pre-Build Phase ==="
-      - echo "Current directory:" && pwd
-      - echo "Listing files:" && ls -la
-      - echo "FHIR directory:" && ls -la FHIR/
+      - ls -la
+      - ls -la FHIR/
 
   build:
     commands:
       - echo "=== Build Phase ==="
       - cd FHIR
-      - echo "Current directory:" && pwd
-      
-      # Build SAM application
-      - echo "Running sam build..."
-      - sam build --template-file hoth_migration_components.yaml --debug || { echo "SAM BUILD FAILED"; exit 1; }
-      
-      # Check build output exists
-      - echo "Checking build output..."
-      - ls -la .aws-sam/build/ || { echo "Build output not found"; exit 1; }
-      
-      # Package with auto-managed S3 bucket
-      - echo "Running sam package..."
-      - sam package --template-file .aws-sam/build/template.yaml --output-template-file ../packaged-template.yaml --resolve-s3 || { echo "SAM PACKAGE FAILED"; exit 1; }
-      
+      - sam build --template-file hoth_migration_components.yaml
+      - sam package --template-file .aws-sam/build/template.yaml --output-template-file ../packaged-template.yaml --resolve-s3
       - cd ..
-      - echo "Packaged template:" && ls -la packaged-template.yaml
+      
+      # Copy config files to root for artifacts
+      - echo "=== Copying config files ==="
+      - cp FHIR/dev.json . 2>/dev/null || echo "dev.json not found in FHIR/"
+      - cp FHIR/test.json . 2>/dev/null || echo "test.json not found in FHIR/"
+      - cp FHIR/prod.json . 2>/dev/null || echo "prod.json not found in FHIR/"
+      
+      # List files to verify
+      - echo "=== Files in root ==="
+      - ls -la *.json 2>/dev/null || echo "No JSON files found"
+      - ls -la packaged-template.yaml
 
   post_build:
     commands:
-      - echo "=== Post-Build Phase ==="
-      - echo "Build completed successfully!"
+      - echo "=== Build Complete ==="
 
 artifacts:
   files:
     - packaged-template.yaml
+    - dev.json
+    - test.json
+    - prod.json
   discard-paths: yes
