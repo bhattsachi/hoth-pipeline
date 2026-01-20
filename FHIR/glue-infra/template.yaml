@@ -6,10 +6,17 @@ Description: |
 Parameters:
   Environment:
     Type: String
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
     Description: Deployment environment
 
   ApplicationName:
     Type: String
+    Default: hoth-data-application
     Description: Project name for resource naming
 
 Resources:
