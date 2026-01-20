@@ -554,7 +554,100 @@ Cloudformation/
     │   └── fhir_migration_secrets.yaml        # Secrets configuration
     │
     └── step-function-eventbridge/
-        └── template.yaml                      # Step Functions workflow
-
+        └── template.yaml                      # Step Functions workflo
 
 ```
+
+# Event brige execution flow
+
+### Execution Flow
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        EXECUTION FLOW                                         │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Step 1: TRIGGER                                                             │
+│  ─────────────────                                                           │
+│  • Cron schedule fires (e.g., daily at 2 AM)                                │
+│    OR                                                                        │
+│  • AWS event matches EventPattern (e.g., Glue job fails)                    │
+│                                                                              │
+│           │                                                                  │
+│           ▼                                                                  │
+│                                                                              │
+│  Step 2: EventBridge Rule EVALUATES                                         │
+│  ──────────────────────────────────                                         │
+│  • Rule checks if event matches pattern or schedule fires                   │
+│  • If State: ENABLED, proceeds to target                                    │
+│                                                                              │
+│           │                                                                  │
+│           ▼                                                                  │
+│                                                                              │
+│  Step 3: EventBridge ASSUMES IAM Role                                       │
+│  ────────────────────────────────────                                       │
+│  • EventBridge uses RoleArn from Target configuration                       │
+│  • Assumes EventBridgeRole via sts:AssumeRole                               │
+│  • Obtains temporary credentials with states:StartExecution permission      │
+│                                                                              │
+│           │                                                                  │
+│           ▼                                                                  │
+│                                                                              │
+│  Step 4: EventBridge INVOKES Step Function                                  │
+│  ─────────────────────────────────────────                                  │
+│  • Calls states:StartExecution API                                          │
+│  • Passes Input JSON to state machine                                       │
+│  • State machine ARN from Target.Arn                                        │
+│                                                                              │
+│           │                                                                  │
+│           ▼                                                                  │
+│                                                                              │
+│  Step 5: Step Function EXECUTES                                             │
+│  ──────────────────────────────                                             │
+│  • State machine starts with input: {"source": "scheduled", "memberId":...} │
+│  • Executes states: ValidateInput → StartGlueJob → NotifySuccess           │
+│  • Uses StepFunctionsExecutionRole for its own permissions                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+# The Targets array in the EventBridge Rule is where everything connects:
+Targets:
+  - Id: StepFunctionsTarget
+    Arn: !GetAtt FhirMigrationStateMachine.Arn    # WHAT to invoke
+    RoleArn: !GetAtt EventBridgeRole.Arn          # HOW to get permission
+    Input: '{"key": "value"}'                      # WHAT data to pass
+
+# Get pipeline role
+    aws codepipeline get-pipeline \
+    --name "hoth-data-application-pipeline" \
+    --region us-east-2 \
+    --query 'pipeline.roleArn' \
+    --output text
+
+# restart pipeline
+    aws codepipeline start-pipeline-execution \
+    --name "hoth-data-application-pipeline" \
+    --region us-east-2
+
+    # ===========
+    ROLE_NAME="hoth-data-application-pipeline-role-dev"
+
+# Add inline policy
+aws iam put-role-policy \
+    --role-name ${ROLE_NAME} \
+    --policy-name CodeConnectionsFullAccess \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["codeconnections:*","codestar-connections:*","codestar:*"],"Resource":"*"}]}'
+
+# Attach managed policy
+aws iam attach-role-policy \
+    --role-name ${ROLE_NAME} \
+    --policy-arn arn:aws:iam::aws:policy/AWSCodeStarFullAccess
+
+# Verify
+echo "=== Verification ==="
+aws iam list-attached-role-policies --role-name ${ROLE_NAME}
+aws iam list-role-policies --role-name ${ROLE_NAME}
+
+echo ""
+echo "✅ Permissions added! Now retry your pipeline."
+
+# ==================
