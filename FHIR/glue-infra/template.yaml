@@ -4,11 +4,13 @@ Description: |
   ETL jobs for data migration and transformation
 
 Parameters:
-  Environment:  
-  Description: Deployment environment
-    
+  Environment:
+    Type: String
+    Description: Deployment environment
+
   ApplicationName:
-    Description: Name of the application
+    Type: String
+    Description: Project name for resource naming
 
 Resources:
   #############################################
