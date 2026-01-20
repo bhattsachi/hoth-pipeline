@@ -38,6 +38,13 @@ phases:
     commands:
       - echo "Build phase started on $(date)"
       - cd FHIR
+      - sam build --template-file hoth_migration_components.yaml 
+      - echo "=== Packaging SAM application ==="
+      - sam package \
+          --template-file .aws-sam/build/template.yaml \
+          --output-template-file packaged-template.yaml \
+          --s3-bucket ${ARTIFACT_BUCKET} \
+          --s3-prefix sam-artifacts/${ApplicationName}/${ENVIRONMENT}
       
       # Package Lambda functions
       - echo "Packaging Lambda functions..."
