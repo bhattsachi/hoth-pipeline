@@ -3,7 +3,6 @@ Description: |
   FHIR Migration Glue Jobs Infrastructure
   ETL jobs for data migration and transformation
 
-Parameters:
 
 
 Resources:

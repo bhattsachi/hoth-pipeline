@@ -7,8 +7,7 @@
   },
   "Tags": {
     "Environment": "dev",
-    "Project": "hoth-migration",
-    "CostCenter": "development",
+    "Application": "hoth-migration",
     "ManagedBy": "CloudFormation"
   }
 }
