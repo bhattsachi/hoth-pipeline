@@ -256,8 +256,7 @@ Outputs:
   StateMachineArn:
     Description: Step Function state machine ARN
     Value: !GetAtt StepFunctionStack.Outputs.StateMachineArn
-    Export:
-      Name: !Sub '${ApplicationName}-StateMachineArn-${Environment}'
+    
 
   GlueJobName:
     Description: Glue job name
