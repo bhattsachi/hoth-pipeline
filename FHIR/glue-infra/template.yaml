@@ -295,6 +295,8 @@ Outputs:
   GlueJobName:
     Description: Name of the main Glue migration job
     Value: !Ref FhirMigrationJob
+    Export:
+      Name: !Sub '${ApplicationName}-GlueJobName-${Environment}'
    
   ValidationJobName:
     Description: Name of the data validation job

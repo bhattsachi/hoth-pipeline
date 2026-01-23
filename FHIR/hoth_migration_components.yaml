@@ -262,8 +262,7 @@ Outputs:
   GlueJobName:
     Description: Glue job name
     Value: !GetAtt GlueStack.Outputs.GlueJobName
-    Export:
-      Name: !Sub '${ApplicationName}-GlueJobName-${Environment}'
+    
 
   SecretArn:
     Description: Secrets Manager secret ARN
