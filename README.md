@@ -197,7 +197,7 @@ export APPLICATION_NAME="hoth-data-application"
 export GITHUB_OWNER="bhattsachi"
 export GITHUB_REPO="hoth-pipeline"
 export GITHUB_BRANCH="dev"
-export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/247abf24-ff00-4488-8fe6-01713d145aaa"
+export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/4925158b-afe3-4785-90b6-8dc4dedd5745"
 
 ```bash
 # Configure deployment variables
@@ -234,7 +234,7 @@ aws cloudformation deploy \
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
-    --stack-name ${PROJECT_NAME}-pipeline \
+    --stack-name ${APPLICATION_NAME}-pipeline \
     --region ${AWS_REGION}
 ```
 
@@ -269,7 +269,7 @@ PIPELINE_NAME=$(aws cloudformation describe-stacks \
 echo "Pipeline Name: ${PIPELINE_NAME}"
 ```
 export PIPELINE_NAME="hoth-data-application-pipeline"
-export CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570"
+export CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/4925158b-afe3-4785-90b6-8dc4dedd5745"
 
 # ════════════════════════════════════════════════════════════════════════════
 # GET ROLE NAME
@@ -317,8 +317,11 @@ aws iam get-role-policy \
 export PIPELINE_NAME="hoth-data-application-pipeline"
 export AWS_REGION="us-east-2"
 
+# Manually start pipeline execution
 echo "Restarting pipeline..."
-aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
+aws codepipeline start-pipeline-execution \
+  --name ${PIPELINE_NAME} \
+  --region $AWS_REGION
 
 
 ### Step 5: Push Code to GitHub
