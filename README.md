@@ -175,7 +175,7 @@ export APPLICATION_NAME="hoth-data-application"
 export GITHUB_OWNER="bhattsachi"
 export GITHUB_REPO="hoth-pipeline"
 export GITHUB_BRANCH="dev"
-export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/1f6ccd5f-ab59-4669-8829-216b19d3d570"
+export CODESTAR_CONNECTION_ARN="arn:aws:codeconnections:us-east-2:615299756109:connection/4925158b-afe3-4785-90b6-8dc4dedd5745"
 
 # Make the deployment script executable
 chmod +x deploy.sh
