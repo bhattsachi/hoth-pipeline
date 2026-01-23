@@ -1,13 +1,13 @@
 {
   "Parameters": {
     "Environment": "prod",
-    "ApplicationName": "hoth-migration",
+    "ApplicationName": "hoth-data-application",
     "OktaDomain": "your-okta-domain.okta.com",
     "LogLevel": "WARNING"
   },
   "Tags": {
     "Environment": "prod",
-    "Project": "hoth-migration",
+    "Application": "hoth-data-application",
     "CostCenter": "production",
     "ManagedBy": "CloudFormation"
   }

@@ -1,13 +1,13 @@
 {
   "Parameters": {
     "Environment": "test",
-    "ApplicationName": "hoth-migration",
+    "ApplicationName": "hoth-data-application",
     "OktaDomain": "test-your-okta-domain.okta.com",
     "LogLevel": "INFO"
   },
   "Tags": {
     "Environment": "test",
-    "Project": "hoth-migration",
+    "Application": "hoth-data-application",
     "CostCenter": "testing",
     "ManagedBy": "CloudFormation"
   }

@@ -129,7 +129,7 @@ echo "https://${AWS_REGION}.console.aws.amazon.com/codesuite/settings/connection
 
 # 2. Click "Create connection"
 # 3. Select "GitHub" as the provider
-# 4. Enter a connection name (e.g., "hoth-migration-github")
+# 4. Enter a connection name (e.g., "hoth-data-application-github")
 # 5. Click "Connect to GitHub"
 # 6. Authorize AWS Connector for GitHub in the popup
 # 7. Click "Install a new app" to install AWS Connector on your GitHub account
@@ -143,7 +143,7 @@ echo "https://${AWS_REGION}.console.aws.amazon.com/codesuite/settings/connection
 # Create the connection (this creates it in PENDING status)
 aws codestar-connections create-connection \
     --provider-type GitHub \
-    --connection-name "hoth-migration-github" \
+    --connection-name "hoth-data-application-github" \
     --region us-east-1
 
 # Note the ConnectionArn from the output

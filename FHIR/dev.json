@@ -1,13 +1,13 @@
 {
   "Parameters": {
     "Environment": "dev",
-    "ApplicationName": "hoth-migration",
+    "ApplicationName": "hoth-data-application",
     "OktaDomain": "dev-your-okta-domain.okta.com",
     "LogLevel": "DEBUG"
   },
   "Tags": {
     "Environment": "dev",
-    "Application": "hoth-migration",
+    "Application": "hoth-data-application",
     "ManagedBy": "CloudFormation"
   }
 }
