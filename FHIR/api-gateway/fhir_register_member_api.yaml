@@ -304,45 +304,7 @@ Resources:
       RestApiId: !Ref FhirRestApi
       Description: !Sub 'Deployment for ${Environment} environment'
 
-  ApiStage:
-    Type: AWS::ApiGateway::Stage
-    Properties:
-      StageName: !Ref Environment
-      RestApiId: !Ref FhirRestApi
-      DeploymentId: !Ref ApiDeployment
-      Description: !Sub '${Environment} stage'
-      MethodSettings:
-        - ResourcePath: '/*'
-          HttpMethod: '*'
-          LoggingLevel: INFO
-          DataTraceEnabled: true
-          MetricsEnabled: true
-          ThrottlingBurstLimit: 100
-          ThrottlingRateLimit: 50
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref ApplicationName
-
-  #############################################
-  # API Gateway Usage Plan and API Key
-  #############################################
-  ApiUsagePlan:
-    Type: AWS::ApiGateway::UsagePlan
-    DependsOn: ApiStage
-    Properties:
-      UsagePlanName: !Sub '${ApplicationName}-usage-plan-${Environment}'
-      Description: Usage plan for FHIR API
-      ApiStages:
-        - ApiId: !Ref FhirRestApi
-          Stage: !Ref Environment
-      Throttle:
-        BurstLimit: 200
-        RateLimit: 100
-      Quota:
-        Limit: 10000
-        Period: DAY
+  
 
   #############################################
   # CloudWatch Log Group for API Gateway
